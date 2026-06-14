@@ -10,6 +10,7 @@ import {
   Font,
   assetManager,
 } from 'cc';
+import { EDITOR } from 'cc/env';
 import { RunnerWorld } from './RunnerWorld';
 import { PlayerRunnerAnimator } from './PlayerRunnerAnimator';
 
@@ -39,7 +40,7 @@ export class RunnerJumpTutorial extends Component {
     range: [50, 2000, 10],
     slide: true,
   })
-  public triggerDistance = 140;
+  public triggerDistance = 80;
 
   private _armed = false;
 
@@ -48,6 +49,8 @@ export class RunnerJumpTutorial extends Component {
   private _done = false;
 
   private _fontResolved: Font | null = null;
+
+  private _textSpawnedAtRuntime = false;
 
   onLoad() {
     const scene = director.getScene();
@@ -62,12 +65,14 @@ export class RunnerJumpTutorial extends Component {
       this.firstEnemyNode = this._findByName('Enemy');
     }
     if (!this.textJumpNode) {
-      this.textJumpNode = this._findByName('Text jump');
+      this.textJumpNode =
+        this._findByName('TapToJumpText') ??
+        this._findByName('TapToJump') ??
+        this._findByName('Text jump');
     }
-    if (!this.textJumpNode) {
-      this.textJumpNode = this._createTextJumpNode();
-    } else {
+    if (this.textJumpNode?.isValid) {
       this._ensureTextOnUi(this.textJumpNode);
+      this.textJumpNode.active = false;
     }
     if (!this.playerAnimator) {
       this.playerAnimator =
@@ -78,12 +83,32 @@ export class RunnerJumpTutorial extends Component {
     this._setTextVisible(false);
   }
 
+  start() {
+    this._setTextVisible(false);
+  }
+
+  onDestroy() {
+    this._destroyRuntimeText();
+  }
+
   public blocksJump(): boolean {
     return !this._done;
   }
 
   public armOnGameStart() {
     this._armed = true;
+  }
+
+  public dismissText() {
+    this._waitingTap = false;
+    this._setTextVisible(false);
+    if (this._textSpawnedAtRuntime) {
+      this._destroyRuntimeText();
+      return;
+    }
+    if (this.textJumpNode?.isValid) {
+      this.textJumpNode.active = false;
+    }
   }
 
   public tryHandleTap(): boolean {
@@ -93,6 +118,7 @@ export class RunnerJumpTutorial extends Component {
     this._waitingTap = false;
     this._done = true;
     this._setTextVisible(false);
+    this._destroyRuntimeText();
     this.runnerWorld?.setScrolling(true);
     this.playerAnimator?.tryJump();
     return true;
@@ -120,7 +146,11 @@ export class RunnerJumpTutorial extends Component {
     this._waitingTap = true;
     this.runnerWorld?.setScrolling(false);
     this._pausePlayerRun();
-    this._setTextVisible(true);
+    const text = this._ensureTextNode();
+    if (text?.isValid) {
+      text.setPosition(0, 120, 0);
+      text.active = true;
+    }
   }
 
   private _pausePlayerRun() {
@@ -150,6 +180,45 @@ export class RunnerJumpTutorial extends Component {
     if (n?.isValid) {
       n.active = visible;
     }
+  }
+
+  private _ensureTextNode(): Node | null {
+    if (EDITOR) {
+      return null;
+    }
+    if (this.textJumpNode?.isValid) {
+      return this.textJumpNode;
+    }
+    this.textJumpNode = this._findByName('Text jump');
+    if (this.textJumpNode?.isValid) {
+      this._ensureTextOnUi(this.textJumpNode);
+      this.textJumpNode.active = false;
+      return this.textJumpNode;
+    }
+    this.textJumpNode =
+      this._findByName('TapToJumpText') ?? this._findByName('TapToJump');
+    if (this.textJumpNode?.isValid) {
+      this._ensureTextOnUi(this.textJumpNode);
+      this.textJumpNode.active = false;
+      return this.textJumpNode;
+    }
+    this.textJumpNode = this._createTextJumpNode();
+    this._textSpawnedAtRuntime = true;
+    return this.textJumpNode;
+  }
+
+  private _destroyRuntimeText() {
+    if (!this._textSpawnedAtRuntime) {
+      if (this.textJumpNode?.isValid) {
+        this.textJumpNode.active = false;
+      }
+      return;
+    }
+    if (this.textJumpNode?.isValid) {
+      this.textJumpNode.destroy();
+    }
+    this.textJumpNode = null;
+    this._textSpawnedAtRuntime = false;
   }
 
   private _findByName(name: string): Node | null {
@@ -225,5 +294,6 @@ export class RunnerJumpTutorial extends Component {
     ui.addChild(n);
     n.setPosition(0, 120, 0);
     n.setSiblingIndex(ui.children.length - 1);
+    n.active = false;
   }
 }

@@ -27,6 +27,7 @@ import { RunnerBalanceScore } from './RunnerBalanceScore';
 import { VictoryConfetti } from './VictoryConfetti';
 import { EnemyRunAnimator } from './EnemyRunAnimator';
 import { RunnerJumpTutorial } from './RunnerJumpTutorial';
+import { OrientationLogoSwitch } from './OrientationLogoSwitch';
 
 const { ccclass, property } = _decorator;
 
@@ -141,6 +142,8 @@ export class RunnerBootstrap extends Component {
 
   private _jumpTutorial: RunnerJumpTutorial | null = null;
 
+  private _orientationLogoSwitch: OrientationLogoSwitch | null = null;
+
   private _handAnim: Animation | null = null;
 
   private _fontResolved: Font | null = null;
@@ -176,6 +179,12 @@ export class RunnerBootstrap extends Component {
     }
     this._damageScanner =
       scene?.getComponentInChildren(RunnerDamageScanner) ?? null;
+    const uiNode = this._findChildByNameCi(scene, 'UI');
+    if (uiNode?.isValid) {
+      this._orientationLogoSwitch =
+        uiNode.getComponent(OrientationLogoSwitch) ??
+        uiNode.addComponent(OrientationLogoSwitch);
+    }
     this._ribbon1 = this.ribbonNode ?? this._findChildByNameCi(scene, 'Ribbon');
     this._ribbon2 = this._findChildByNameCi(scene, 'Ribbon2');
     if (!this.enemyRunAnimator) {
@@ -214,11 +223,8 @@ export class RunnerBootstrap extends Component {
       this._findUnder(this._winnerButton, 'effects') ??
       this._findUnder(this._winnerButton, 'effect') ??
       this._findChildByNameCi(scene, 'effect');
-    this._blackout =
-      this.blackoutNode ?? this._findChildByNameCi(scene, 'blackout');
-    if (this._blackout?.isValid) {
-      this._blackout.active = false;
-    }
+    this._blackout = this._resolveBlackout();
+    this._hideBlackout();
     if (!this.handNode) {
       this.handNode = this._findChildByNameCi(scene, 'Hand');
     }
@@ -434,6 +440,7 @@ export class RunnerBootstrap extends Component {
     }
     if (!this._started) {
       this._started = true;
+      this._hideBlackout();
       this._jumpReady = false;
       this.runnerWorld?.setScrolling(true);
       this.playerAnimator?.enterGameplayRun();
@@ -699,6 +706,7 @@ export class RunnerBootstrap extends Component {
   }
 
   private _presentVictory() {
+    this._jumpTutorial?.dismissText();
     this._showBlackout();
     this._restoreInstallButtonColor();
     this._activateVictoryUi();
@@ -716,6 +724,7 @@ export class RunnerBootstrap extends Component {
 
   private _presentDefeat() {
     this._stopAllEnemyLoops();
+    this._jumpTutorial?.dismissText();
     this._showBlackout();
     this._deactivateVictoryUi();
     this._hideDefeatOnlyStartUi();
@@ -748,8 +757,12 @@ export class RunnerBootstrap extends Component {
   }
 
   private _hideDefeatOnlyStartUi() {
-    this._hideNode(this._startLogo);
+    this._orientationLogoSwitch?.hideAll();
     this._hideNode(this._startButtonRoot);
+    if (this._downloadButton) {
+      Tween.stopAllByTarget(this._downloadButton);
+    }
+    this._hideNode(this._downloadButton);
   }
 
   private _prepareResultUiFadeIn() {
@@ -835,33 +848,46 @@ export class RunnerBootstrap extends Component {
     }
   }
 
+  private _resolveBlackout(): Node | null {
+    if (this.blackoutNode?.isValid) {
+      return this.blackoutNode;
+    }
+    const ui = this._findChildByNameCi(this.node.scene, 'UI');
+    const underUi = this._findUnder(ui, 'Blackout');
+    if (underUi?.isValid) {
+      return underUi;
+    }
+    return this._findChildByNameCi(this.node.scene, 'blackout');
+  }
+
   private _showBlackout() {
-    const b =
-      this._blackout ??
-      this.blackoutNode ??
-      this._findChildByNameCi(this.node.scene, 'blackout');
+    const b = this._resolveBlackout();
     if (!b?.isValid) {
       return;
     }
     this._blackout = b;
-    const main = this.node;
-    if (b.parent === main) {
-      let ws: Node | null = null;
-      const kids = main.children;
-      for (let i = 0; i < kids.length; i++) {
-        const c = kids[i];
-        if (c.name.toLowerCase() === 'worldscroll') {
-          ws = c;
-          break;
-        }
-      }
-      if (ws?.isValid) {
-        b.setSiblingIndex(ws.getSiblingIndex() + 1);
-      } else {
-        b.setSiblingIndex(Math.max(0, main.children.length - 1));
-      }
+    const ui = b.parent;
+    if (ui?.isValid && ui.name.toLowerCase() === 'ui') {
+      const afterCamera = Math.min(1, Math.max(0, ui.children.length - 1));
+      b.setSiblingIndex(afterCamera);
     }
+    const visual = b.children.length > 0 ? b.children[0] : b;
+    let op = visual.getComponent(UIOpacity);
+    if (!op) {
+      op = visual.addComponent(UIOpacity);
+    }
+    op.opacity = 150;
+    visual.active = true;
     b.active = true;
+  }
+
+  private _hideBlackout() {
+    const b = this._blackout ?? this._resolveBlackout();
+    if (!b?.isValid) {
+      return;
+    }
+    this._blackout = b;
+    b.active = false;
   }
 
   private _ensureResultTitles(mainText: string, subText: string) {
