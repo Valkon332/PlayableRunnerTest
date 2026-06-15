@@ -1,5 +1,15 @@
-import { _decorator, Animation, AnimationClip, Component } from 'cc';
+import {
+  _decorator,
+  Animation,
+  AnimationClip,
+  Color,
+  Component,
+  Sprite,
+  tween,
+  Tween,
+} from 'cc';
 import { RunnerHealth } from './RunnerHealth';
+import { RunnerAudioManager } from './RunnerAudioManager';
 
 const { ccclass, property } = _decorator;
 
@@ -37,7 +47,7 @@ export class PlayerRunnerAnimator extends Component {
   public hitClipName = 'PlayerHit';
 
   @property
-  public hitDuration = 0.1;
+  public hitBlinkStepDuration = 0.08;
 
   private _gameplay = false;
 
@@ -51,6 +61,10 @@ export class PlayerRunnerAnimator extends Component {
 
   private _jumpAir = 0;
 
+  private _hitSprite: Sprite | null = null;
+
+  private _hitBaseColor: Color | null = null;
+
   onLoad() {
     if (!this.anim) {
       this.anim =
@@ -60,6 +74,11 @@ export class PlayerRunnerAnimator extends Component {
     if (!this.health) {
       this.health = this.getComponent(RunnerHealth);
     }
+    this._resolveHitSprite();
+  }
+
+  onDestroy() {
+    this._stopHitColorTween();
   }
 
   start() {
@@ -95,6 +114,7 @@ export class PlayerRunnerAnimator extends Component {
     this._jumpElapsed = 0;
     this._jumpAir = Math.max(0.001, air);
     this._jumpMotion = this.jumpHeight > 0;
+    RunnerAudioManager.inst?.playJump();
     this._playClip(this.jumpClipName, false);
     const jst = this.anim.getState(this.jumpClipName);
     if (jst && jst.duration > 0) {
@@ -134,11 +154,34 @@ export class PlayerRunnerAnimator extends Component {
     this.node.setPosition(p.x, this._jumpBaseY, p.z);
   }
 
+  public stopRunToIdle() {
+    if (!this.anim) {
+      return;
+    }
+    this.unscheduleAllCallbacks();
+    this._stopHitColorTween();
+    this._resetHitColor();
+    this._gameplay = false;
+    this._busy = false;
+    const landY = this._jumpMotion ? this._jumpBaseY : this.node.position.y;
+    this._jumpMotion = false;
+    const p = this.node.position;
+    this.node.setPosition(p.x, landY, p.z);
+    this._playClip(this.idleClipName, true);
+    const st = this.anim.getState(this.idleClipName);
+    if (st) {
+      const s = this.idlePlaybackSpeed;
+      st.speed = s > 0 ? s : 1;
+    }
+  }
+
   public playClipLoop(clipName: string) {
     if (!this.anim || !clipName) {
       return;
     }
     this.unscheduleAllCallbacks();
+    this._stopHitColorTween();
+    this._resetHitColor();
     this._gameplay = false;
     this._busy = false;
     const landY = this._jumpMotion ? this._jumpBaseY : this.node.position.y;
@@ -168,6 +211,8 @@ export class PlayerRunnerAnimator extends Component {
       return;
     }
     this._busy = true;
+    RunnerAudioManager.inst?.playHit();
+    this._playHitColorTween();
     this._playClip(this.hitClipName, false);
     const st = this.anim.getState(this.hitClipName);
     if (!st) {
@@ -175,7 +220,7 @@ export class PlayerRunnerAnimator extends Component {
       onComplete?.();
       return;
     }
-    const window = Math.max(0.001, this.hitDuration);
+    const window = this._hitBlinkTotalDuration();
     if (st.duration > 0) {
       st.speed = st.duration / window;
     } else {
@@ -189,6 +234,63 @@ export class PlayerRunnerAnimator extends Component {
       }
       onComplete?.();
     }, window);
+  }
+
+  private _resolveHitSprite() {
+    const idle = this.node.getChildByName('PlayerIdle');
+    if (idle?.isValid) {
+      this._hitSprite = idle.getComponent(Sprite);
+    }
+    if (!this._hitSprite) {
+      this._hitSprite = this.getComponentInChildren(Sprite);
+    }
+    if (this._hitSprite?.isValid) {
+      this._hitBaseColor = this._hitSprite.color.clone();
+    }
+  }
+
+  private _resetHitColor() {
+    if (!this._hitSprite?.isValid) {
+      this._resolveHitSprite();
+    }
+    if (this._hitSprite?.isValid && this._hitBaseColor) {
+      this._hitSprite.color = this._hitBaseColor.clone();
+    }
+  }
+
+  private _stopHitColorTween() {
+    if (this._hitSprite?.isValid) {
+      Tween.stopAllByTarget(this._hitSprite);
+    }
+  }
+
+  private _playHitColorTween() {
+    if (!this._hitSprite?.isValid) {
+      this._resolveHitSprite();
+    }
+    const sprite = this._hitSprite;
+    if (!sprite?.isValid) {
+      return;
+    }
+    if (!this._hitBaseColor) {
+      this._hitBaseColor = sprite.color.clone();
+    }
+    const white = this._hitBaseColor.clone();
+    const red = new Color(255, 0, 0, white.a);
+    const step = Math.max(0.001, this.hitBlinkStepDuration);
+    this._stopHitColorTween();
+    this._resetHitColor();
+    tween(sprite)
+      .to(step, { color: red })
+      .to(step, { color: white })
+      .to(step, { color: red })
+      .to(step, { color: white })
+      .call(() => this._resetHitColor())
+      .start();
+  }
+
+  private _hitBlinkTotalDuration(): number {
+    return Math.max(0.001, this.hitBlinkStepDuration) * 4;
   }
 
   private _canResumeRun(): boolean {

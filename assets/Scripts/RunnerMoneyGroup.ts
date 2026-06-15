@@ -11,6 +11,7 @@ import { RunnerWorld } from './RunnerWorld';
 import { RunnerDamageScanner } from './RunnerDamageScanner';
 import { RunnerBalanceScore } from './RunnerBalanceScore';
 import { RunnerMoneyPraise } from './RunnerMoneyPraise';
+import { RunnerAudioManager } from './RunnerAudioManager';
 
 const { ccclass, property } = _decorator;
 
@@ -159,6 +160,7 @@ export class RunnerMoneyGroup extends Component {
   private _awardPickup(node: Node) {
     const pts = this._pointsForPickup(node);
     this.balanceScore?.addPoints(pts);
+    RunnerAudioManager.inst?.playCollect();
     this.moneyPraise?.onMoneyPicked(node);
   }
 

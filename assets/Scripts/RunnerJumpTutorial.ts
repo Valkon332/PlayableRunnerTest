@@ -40,7 +40,7 @@ export class RunnerJumpTutorial extends Component {
     range: [50, 2000, 10],
     slide: true,
   })
-  public triggerDistance = 80;
+  public triggerDistance = 70;
 
   private _armed = false;
 

@@ -12,6 +12,7 @@ import { RunnerWorld } from './RunnerWorld';
 import { RunnerHealth } from './RunnerHealth';
 import { RunnerObstacle } from './RunnerObstacle';
 import { PlayerRunnerAnimator } from './PlayerRunnerAnimator';
+import { RunnerAudioManager } from './RunnerAudioManager';
 
 const { ccclass, property } = _decorator;
 
@@ -40,7 +41,21 @@ export class RunnerDamageScanner extends Component {
   private _wasOverlap = new Map<string, boolean>();
 
   public getHitUITransform(): UITransform | null {
-    return this._ui;
+    if (!this._ui) {
+      return null;
+    }
+    const idle = this._ui.node.getChildByName('PlayerIdle');
+    if (idle?.isValid) {
+      const idleUi = idle.getComponent(UITransform);
+      if (idleUi && idle.getComponent(Sprite)) {
+        return idleUi;
+      }
+    }
+    if (this._ui.node.getComponent(Sprite)) {
+      return this._ui;
+    }
+    const sp = this._ui.node.getComponentInChildren(Sprite);
+    return sp?.node.getComponent(UITransform) ?? this._ui;
   }
 
   onLoad() {
@@ -118,6 +133,7 @@ export class RunnerDamageScanner extends Component {
   private _applyDamage(obs: RunnerObstacle) {
     this.health?.takeDamage(obs.damage);
     this._invuln = this.invulnDuration;
+    RunnerAudioManager.inst?.playHurt();
     this.animator?.playHitThenResume();
   }
 
